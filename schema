@@ -1,0 +1,29 @@
+-- Database schema:
+-- CREATE DATABASE war_game;
+-- USE war_game;
+
+-- CREATE TABLE users (
+--   id INT AUTO_INCREMENT PRIMARY KEY,
+--   username VARCHAR(50) UNIQUE,
+--   password VARCHAR(255),
+--   created_at DATETIME
+-- );
+
+-- CREATE TABLE games (
+--   id INT AUTO_INCREMENT PRIMARY KEY,
+--   user_id INT,
+--   rounds INT,
+--   result VARCHAR(10),
+--   created_at DATETIME,
+--   FOREIGN KEY (user_id) REFERENCES users(id)
+-- );
+
+-- CREATE TABLE game_states (
+--   id INT AUTO_INCREMENT PRIMARY KEY,
+--   user_id INT,
+--   player_cards TEXT,
+--   computer_cards TEXT,
+--   rounds INT,
+--   status VARCHAR(20),
+--   FOREIGN KEY (user_id) REFERENCES users(id)
+-- );
