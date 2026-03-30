@@ -4,7 +4,7 @@ import { db } from "../db";
 export const startGame = async (req: Request, res: Response) => {
   const { userId } = req.body;
 
-  // ✅ remove any existing active game
+  // remove any existing active game
   await db.query(
     "DELETE FROM game_states WHERE user_id = ? AND status = 'active'",
     [userId]
@@ -48,7 +48,23 @@ export const playRound = async (req: Request, res: Response) => {
   let playerCards: number[] = JSON.parse(game.player_cards);
   let computerCards: number[] = JSON.parse(game.computer_cards);
 
-  const getValue = (c: number) => c % 13;
+  // ✅ STOP if game already over
+  if (playerCards.length === 0 || computerCards.length === 0) {
+    const winner = playerCards.length === 0 ? "computer" : "player";
+
+    return res.json({
+      playerCard: null,
+      computerCard: null,
+      result: winner,
+      rounds: game.rounds,
+      playerCount: playerCards.length,
+      computerCount: computerCards.length,
+      gameOver: true,
+      winner,
+    });
+  }
+
+const getValue = (c: number) => (c % 13) + 2;
 
   let pile: number[] = [];
 
@@ -59,14 +75,37 @@ export const playRound = async (req: Request, res: Response) => {
 
   let war = false;
 
-  // 🔥 FULL WAR RESOLUTION (NOT LOOPED RANDOMLY)
+  // WAR loop
   while (getValue(playerCard) === getValue(computerCard)) {
     war = true;
 
+    // ✅ FIX: handle not enough cards for war → END GAME
     if (playerCards.length < 4 || computerCards.length < 4) {
-      computerCards.push(...pile, ...playerCards);
-      playerCards = [];
-      break;
+      const winner = playerCards.length < 4 ? "computer" : "player";
+
+      const rounds = game.rounds + 1;
+
+      await db.query(
+        `INSERT INTO games (user_id, rounds, result, created_at)
+         VALUES (?, ?, ?, NOW())`,
+        [userId, rounds, winner === "player" ? "win" : "loss"]
+      );
+
+      await db.query(
+        "UPDATE game_states SET status = 'finished' WHERE id = ?",
+        [game.id]
+      );
+
+      return res.json({
+        playerCard,
+        computerCard,
+        result: winner === "player" ? "war-player" : "war-computer",
+        rounds,
+        playerCount: playerCards.length,
+        computerCount: computerCards.length,
+        gameOver: true,
+        winner,
+      });
     }
 
     // 3 face-down
@@ -96,29 +135,32 @@ export const playRound = async (req: Request, res: Response) => {
 
   const rounds = game.rounds + 1;
 
+  // ✅ UPDATE game state
   await db.query(
     "UPDATE game_states SET player_cards=?, computer_cards=?, rounds=? WHERE id=?",
     [JSON.stringify(playerCards), JSON.stringify(computerCards), rounds, game.id]
   );
 
-const gameOver =
-  playerCards.length === 52 || computerCards.length === 52;
+  // ✅ FIX: proper game end condition
+  const gameOver =
+    playerCards.length === 0 || computerCards.length === 0;
 
-if (gameOver) {
-  const result =
-    playerCards.length === 52 ? "player" : "computer";
+  let winner: "player" | "computer" | null = null;
 
-  await db.query(
-    `INSERT INTO games (user_id, rounds, result, created_at)
-     VALUES (?, ?, ?, NOW())`,
-    [userId, rounds, result]
-  );
+  if (gameOver) {
+    winner = playerCards.length === 0 ? "computer" : "player";
 
-  await db.query(
-    "UPDATE game_states SET status = 'finished' WHERE id = ?",
-    [game.id]
-  );
-}
+    await db.query(
+      `INSERT INTO games (user_id, rounds, result, created_at)
+       VALUES (?, ?, ?, NOW())`,
+      [userId, rounds, winner === "player" ? "win" : "loss"]
+    );
+
+    await db.query(
+      "UPDATE game_states SET status = 'finished' WHERE id = ?",
+      [game.id]
+    );
+  }
 
   res.json({
     playerCard,
@@ -127,13 +169,8 @@ if (gameOver) {
     rounds,
     playerCount: playerCards.length,
     computerCount: computerCards.length,
-    gameOver: playerCards.length === 52 || computerCards.length === 52,
-    winner:
-      playerCards.length === 52
-        ? "player"
-        : computerCards.length === 52
-        ? "computer"
-        : null,
+    gameOver,
+    winner,
   });
 };
 
