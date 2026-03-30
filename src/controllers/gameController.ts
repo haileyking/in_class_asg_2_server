@@ -42,24 +42,66 @@ export const playRound = async (req: Request, res: Response) => {
   let playerCards = JSON.parse(game.player_cards);
   let computerCards = JSON.parse(game.computer_cards);
 
-  const playerCard = playerCards.shift();
-  const computerCard = computerCards.shift();
-
-  let result = "";
-
-  if (playerCard > computerCard) {
-    playerCards.push(playerCard, computerCard);
-    result = "player";
-  } else if (computerCard > playerCard) {
-    computerCards.push(playerCard, computerCard);
-    result = "computer";
-  } else {
-    // WAR (simplified)
-    result = "war";
+  if (playerCards.length === 0 || computerCards.length === 0) {
+    return res.status(400).json({ message: "No active game" });
   }
 
-  let rounds = game.rounds + 1;
+  let playerCard = playerCards.shift();
+  let computerCard = computerCards.shift();
 
+  const pile = [playerCard, computerCard];
+  let result = "";
+  let warOccurred = false;
+
+  while (true) {
+    if (playerCard > computerCard) {
+      playerCards.push(...pile);
+      result = warOccurred ? "war-player" : "player";
+      break;
+    }
+
+    if (computerCard > playerCard) {
+      computerCards.push(...pile);
+      result = warOccurred ? "war-computer" : "computer";
+      break;
+    }
+
+    // WAR
+    warOccurred = true;
+
+    // Each player must place 3 face down and 1 face up = 4 more cards
+    if (playerCards.length < 4) {
+      pile.push(...playerCards, ...computerCards);
+      playerCards = [];
+      computerCards.push(...pile);
+      result = "war-computer";
+      break;
+    }
+
+    if (computerCards.length < 4) {
+      pile.push(...playerCards, ...computerCards);
+      computerCards = [];
+      playerCards.push(...pile);
+      result = "war-player";
+      break;
+    }
+
+    // 3 face-down cards each
+    for (let i = 0; i < 3; i += 1) {
+      pile.push(playerCards.shift());
+      pile.push(computerCards.shift());
+    }
+
+    // 1 face-up card each
+    playerCard = playerCards.shift();
+    computerCard = computerCards.shift();
+
+    pile.push(playerCard, computerCard);
+
+    // loop repeats to compare these new face-up cards
+  }
+
+  const rounds = game.rounds + 1;
   let status = "active";
 
   if (playerCards.length === 52) {
@@ -69,9 +111,7 @@ export const playRound = async (req: Request, res: Response) => {
       "INSERT INTO games (user_id, rounds, result, created_at) VALUES (?, ?, 'win', NOW())",
       [userId, rounds]
     );
-  }
-
-  if (computerCards.length === 52) {
+  } else if (computerCards.length === 52) {
     status = "finished";
 
     await db.query(
@@ -91,7 +131,14 @@ export const playRound = async (req: Request, res: Response) => {
     result,
     rounds,
     playerCount: playerCards.length,
-    computerCount: computerCards.length
+    computerCount: computerCards.length,
+    gameOver: playerCards.length === 52 || computerCards.length === 52,
+    winner:
+      playerCards.length === 52
+        ? "player"
+        : computerCards.length === 52
+        ? "computer"
+        : null,
   });
 };
 
